@@ -1,4 +1,6 @@
 import Input, { Keys } from "./input.js";
+import Button from "./button.js";
+import Menu from "./menu.js";
 
 const canvas = document.getElementById("myCanvas");
 const ctx = canvas.getContext("2d");
@@ -10,6 +12,10 @@ playerImage.src = "./images/player.png";
 
 const enemyImage = new Image();
 enemyImage.src = "./images/enemy.png";
+
+let state = "menu";
+
+const menu = new Menu(input, canvas, startGame);
 
 const player = {
   x: 80,
@@ -30,9 +36,49 @@ const enemies = [];
 const particles = [];
 
 let score = 0;
-let gameOver = false;
 let enemySpawnTimer = 0;
 
+let restartButton = new Button(input, {
+  text: "Restart",
+  x: canvas.width / 2 - 100,
+  y: canvas.height / 2 + 120,
+  width: 200,
+  height: 60,
+});
+
+let backToMenuButton = new Button(input, {
+  text: "Main Menu",
+  x: canvas.width / 2 - 100,
+  y: canvas.height / 2 + 200,
+  width: 200,
+  height: 60,
+});
+
+function startGame() {
+  resetGame();
+  state = "playing";
+}
+
+function goToMenu() {
+  resetGame();
+  state = "menu";
+}
+
+function resetGame() {
+  score = 0;
+
+  player.x = 80;
+  player.y = canvas.height / 2;
+  player.cooldown = 0;
+  player.dashTime = 0;
+  player.dashCooldown = 0;
+
+  bullets.length = 0;
+  enemies.length = 0;
+  particles.length = 0;
+
+  enemySpawnTimer = 0;
+}
 
 function rectsCollide(a, b) {
   return (
@@ -47,7 +93,6 @@ function random(min, max) {
   return Math.random() * (max - min) + min;
 }
 
-// enemies
 function spawnEnemy() {
   const size = Math.floor(random(40, 80));
 
@@ -60,7 +105,6 @@ function spawnEnemy() {
   });
 }
 
-// shooting
 function shoot() {
   bullets.push({
     x: player.x + player.width - 10,
@@ -71,7 +115,6 @@ function shoot() {
   });
 }
 
-// shooting particle
 function createExplosion(x, y) {
   for (let i = 0; i < 15; i++) {
     particles.push({
@@ -88,50 +131,52 @@ function createExplosion(x, y) {
 function update() {
   input.update();
 
-  if (gameOver) return;
-
-  // player movement
-  
-if (player.dashCooldown > 0) {
-  player.dashCooldown--;
-}
-
-if (player.dashTime > 0) {
-  player.dashTime--;
-}
-
-if (
-  input.getKeyDown(Keys.Shift) &&
-  player.dashCooldown <= 0
-) {
-  player.dashTime = player.dashDuration;
-  player.dashCooldown = player.dashCooldownMax;
-}
-
-// Current movement speed
-let currentSpeed = player.speed;
-
-if (player.dashTime > 0) {
-  currentSpeed = player.dashSpeed;
-}
-
-// player movement
-if (input.getKey(Keys.W) || input.getKey(Keys.UpArrow)) {
-  player.y -= currentSpeed;
-}
-
-if (input.getKey(Keys.S) || input.getKey(Keys.DownArrow)) {
-  player.y += currentSpeed;
-}
-
-  player.y = Math.max(
-    0,
-    Math.min(canvas.height - player.height, player.y)
-  );
-
-  if (player.cooldown > 0) {
-    player.cooldown--;
+  // menu
+  if (state === "menu") {
+    menu.update();
+    return;
   }
+
+  // game over
+  if (state === "gameover") {
+    if (restartButton.clicked()) {
+      startGame();
+    }
+
+    if (backToMenuButton.clicked()) {
+      goToMenu();
+    }
+
+    return;
+  }
+
+  // movement
+
+  if (player.dashCooldown > 0) player.dashCooldown--;
+  if (player.dashTime > 0) player.dashTime--;
+
+  if (
+    input.getKeyDown(Keys.Shift) &&
+    player.dashCooldown <= 0
+  ) {
+    player.dashTime = player.dashDuration;
+    player.dashCooldown = player.dashCooldownMax;
+  }
+
+  let currentSpeed = player.speed;
+  if (player.dashTime > 0) currentSpeed = player.dashSpeed;
+
+  if (input.getKey(Keys.W) || input.getKey(Keys.UpArrow)) {
+    player.y -= currentSpeed;
+  }
+
+  if (input.getKey(Keys.S) || input.getKey(Keys.DownArrow)) {
+    player.y += currentSpeed;
+  }
+
+  player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
+
+  if (player.cooldown > 0) player.cooldown--;
 
   if (
     (input.getKey(Keys.Space) || input.getKey(Keys.D)) &&
@@ -142,57 +187,51 @@ if (input.getKey(Keys.S) || input.getKey(Keys.DownArrow)) {
   }
 
   // bullets
-  bullets.forEach((bullet, index) => {
-    bullet.x += bullet.speed;
-
-    if (bullet.x > canvas.width) {
-      bullets.splice(index, 1);
-    }
+  bullets.forEach((b, i) => {
+    b.x += b.speed;
+    if (b.x > canvas.width) bullets.splice(i, 1);
   });
 
-  //enemy spawning
+  // enemies
   enemySpawnTimer--;
 
   if (enemySpawnTimer <= 0) {
     spawnEnemy();
-
     enemySpawnTimer = Math.max(20, 80 - score);
   }
 
-  enemies.forEach((enemy, enemyIndex) => {
-    enemy.x -= enemy.speed;
+  enemies.forEach((e, ei) => {
+    e.x -= e.speed;
 
-    if (enemy.x + enemy.width < 0) {
-      gameOver = true;
+    if (e.x + e.width < 0) {
+      state = "gameover";
     }
 
-    if (rectsCollide(player, enemy)) {
-      gameOver = true;
+    if (rectsCollide(player, e)) {
+      state = "gameover";
     }
 
-    bullets.forEach((bullet, bulletIndex) => {
-      if (rectsCollide(bullet, enemy)) {
+    bullets.forEach((b, bi) => {
+      if (rectsCollide(b, e)) {
         createExplosion(
-          enemy.x + enemy.width / 2,
-          enemy.y + enemy.height / 2
+          e.x + e.width / 2,
+          e.y + e.height / 2
         );
 
-        enemies.splice(enemyIndex, 1);
-        bullets.splice(bulletIndex, 1);
+        enemies.splice(ei, 1);
+        bullets.splice(bi, 1);
 
         score++;
       }
     });
   });
 
-  particles.forEach((p, index) => {
+  particles.forEach((p, i) => {
     p.x += p.dx;
     p.y += p.dy;
     p.life--;
 
-    if (p.life <= 0) {
-      particles.splice(index, 1);
-    }
+    if (p.life <= 0) particles.splice(i, 1);
   });
 }
 
@@ -211,44 +250,25 @@ function drawBackground() {
 }
 
 function drawPlayer() {
-  ctx.drawImage(
-    playerImage,
-    player.x,
-    player.y,
-    player.width,
-    player.height
-  );
+  ctx.drawImage(playerImage, player.x, player.y, player.width, player.height);
 }
 
 function drawBullets() {
-  bullets.forEach(bullet => {
+  bullets.forEach(b => {
     ctx.fillStyle = "#ffee00";
-
-    ctx.fillRect(
-      bullet.x,
-      bullet.y,
-      bullet.width,
-      bullet.height
-    );
+    ctx.fillRect(b.x, b.y, b.width, b.height);
   });
 }
 
 function drawEnemies() {
-  enemies.forEach(enemy => {
-    ctx.drawImage(
-      enemyImage,
-      enemy.x,
-      enemy.y,
-      enemy.width,
-      enemy.height
-    );
+  enemies.forEach(e => {
+    ctx.drawImage(enemyImage, e.x, e.y, e.width, e.height);
   });
 }
 
 function drawParticles() {
   particles.forEach(p => {
     ctx.fillStyle = `rgba(255,180,50,${p.life / 30})`;
-
     ctx.beginPath();
     ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
     ctx.fill();
@@ -258,36 +278,24 @@ function drawParticles() {
 function drawUI() {
   ctx.fillStyle = "white";
   ctx.font = "28px Arial";
-
   ctx.fillText(`Score: ${score}`, 20, 40);
 
-  if (gameOver) {
+  if (state === "gameover") {
     ctx.textAlign = "center";
 
     ctx.font = "64px Arial";
     ctx.fillStyle = "#ff4444";
-    ctx.fillText(
-      "GAME OVER",
-      canvas.width / 2,
-      canvas.height / 2
-    );
+    ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2);
 
     ctx.font = "28px Arial";
     ctx.fillStyle = "white";
-
-    ctx.fillText(
-      `Final Score: ${score}`,
-      canvas.width / 2,
-      canvas.height / 2 + 50
-    );
+    ctx.fillText(`Final Score: ${score}`, canvas.width / 2, canvas.height / 2 + 50);
 
     ctx.font = "20px Arial";
+    ctx.fillText("Try again or return to menu", canvas.width / 2, canvas.height / 2 + 100);
 
-    ctx.fillText(
-      "Refresh page to restart",
-      canvas.width / 2,
-      canvas.height / 2 + 100
-    );
+    restartButton.draw(ctx);
+    backToMenuButton.draw(ctx);
 
     ctx.textAlign = "left";
   }
@@ -297,24 +305,26 @@ function gameLoop() {
   update();
 
   drawBackground();
-  drawPlayer();
-  drawBullets();
-  drawEnemies();
-  drawParticles();
-  drawUI();
+
+  if (state === "menu") {
+    menu.draw(ctx);
+  } else {
+    drawPlayer();
+    drawBullets();
+    drawEnemies();
+    drawParticles();
+    drawUI();
+  }
 
   requestAnimationFrame(gameLoop);
 }
 
-let loadedImages = 0;
+let loaded = 0;
 
-function imageLoaded() {
-  loadedImages++;
-
-  if (loadedImages === 2) {
-    gameLoop();
-  }
+function onLoad() {
+  loaded++;
+  if (loaded === 2) gameLoop();
 }
 
-playerImage.onload = imageLoaded;
-enemyImage.onload = imageLoaded;
+playerImage.onload = onLoad;
+enemyImage.onload = onLoad;
